@@ -1,14 +1,16 @@
-use std::collections::HashSet;
-use std::hash::BuildHasher;
-use std::hash::Hash;
-use std::hash::Hasher;
-use std::sync::Arc;
+use std::{
+    collections::HashSet,
+    hash::{BuildHasher, Hash, Hasher},
+    sync::Arc,
+};
 
-use crate::xor8::filter::fingerprint;
-use crate::xor8::filter::splitmix64;
-use crate::xor8::filter::XorSet;
-use crate::xor8::Xor8;
-use crate::BuildHasherDefault;
+use crate::{
+    xor8::{
+        filter::{fingerprint, splitmix64, XorSet},
+        Xor8,
+    },
+    BuildHasherDefault,
+};
 
 #[derive(Clone, Copy, Default)]
 struct KeyIndex {
@@ -87,8 +89,8 @@ where
 
     /// Insert 64-bit digest of a single key.
     ///
-    /// Digest for the key shall be generated using the default-hasher or via hasher
-    /// supplied via [Xor8Builder::with_hasher] method.
+    /// Digest for the key shall be generated using the default-hasher or via
+    /// hasher supplied via [Xor8Builder::with_hasher] method.
     pub fn insert<K: ?Sized + Hash>(&mut self, key: &K) {
         let digest = self.hash(key);
 
@@ -98,8 +100,8 @@ where
 
     /// Populate with 64-bit digests for a collection of keys of type `K`.
     ///
-    /// Digest for key shall be generated using the default-hasher or via hasher supplied
-    /// via [Xor8Builder::with_hasher] method.
+    /// Digest for key shall be generated using the default-hasher or via hasher
+    /// supplied via [Xor8Builder::with_hasher] method.
     pub fn populate<'i, K: Hash + 'i, I: IntoIterator<Item = &'i K>>(&mut self, keys: I) {
         let mut n = 0;
 
@@ -125,40 +127,44 @@ where
         self.num_digests += n;
     }
 
-    /// Build bitmap for keys that where previously inserted using [Xor8Builder::insert],
-    /// [Xor8Builder::populate] and [Xor8Builder::populate_digests] method.
+    /// Build bitmap for keys that where previously inserted using
+    /// [Xor8Builder::insert], [Xor8Builder::populate] and
+    /// [Xor8Builder::populate_digests] method.
     pub fn build(&mut self) -> Result<Xor8<H>, crate::Error> {
         let digest_len = self.digests.len();
-        let digests = self.digests.iter().copied();
-        Self::build_inner(self.hash_builder.clone(), || digests.clone(), digest_len)
+        Self::build_inner(
+            self.hash_builder.clone(),
+            self.digests.iter().copied(),
+            digest_len,
+        )
     }
 
     /// Build a bitmap for pre-computed 64-bit digests for keys.
     ///
     /// If keys where previously inserted using [Xor8Builder::insert] or
-    /// [Xor8Builder::populate] or [Xor8Builder::populate_digests] methods, they shall be
-    /// ignored.
+    /// [Xor8Builder::populate] or [Xor8Builder::populate_digests] methods, they
+    /// shall be ignored.
     ///
-    /// It is upto the caller to ensure that digests are unique, that there no duplicates.
+    /// It is upto the caller to ensure that digests are unique, that there no
+    /// duplicates.
     pub fn build_from_digests(
         &mut self,
         digests: &[u64],
     ) -> Result<Xor8<H>, crate::Error> {
         Self::build_inner(
             self.hash_builder.clone(),
-            || digests.iter().copied(),
+            digests.iter().copied(),
             digests.len(),
         )
     }
 
-    fn build_inner<F, It>(
+    fn build_inner<It>(
         hash_builder: H,
-        digest_generator: F,
+        digest_iter: It,
         digest_len: usize,
     ) -> Result<Xor8<H>, crate::Error>
     where
-        F: Fn() -> It,
-        It: IntoIterator<Item = u64> + Clone,
+        It: Iterator<Item = u64> + Clone,
     {
         let mut ff = Xor8::<H>::new(hash_builder);
 
@@ -182,7 +188,7 @@ where
         let mut sets2: Vec<XorSet> = vec![XorSet::default(); block_length];
 
         loop {
-            for key in digest_generator() {
+            for key in digest_iter.clone() {
                 let hs = ff.get_h0h1h2(key);
                 sets0[hs.h0 as usize].xor_mask ^= hs.h;
                 sets0[hs.h0 as usize].count += 1;
