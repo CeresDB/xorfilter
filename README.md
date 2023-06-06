@@ -22,24 +22,28 @@ or
 
 ```toml
 [dependencies]
-xorfilter-rs = { git = "https://github.com/bnclabs/xorfilter" }
+xorfilter-rs = { git = "https://github.com/prataprc/xorfilter" }
 ```
 
 ```rust
-use xorfilter::Xor8;
+use xorfilter::{xor8::Xor8Builder, BuildHasherDefault};
 
-let mut keys: Vec<u64> = vec![];
-for _ in 0..num_keys {
-    keys.push(rng.gen());
-}
+fn main() {
+    let num_keys = 1000;
+    let lookup = 10;
+    let mut b = Xor8Builder::<BuildHasherDefault>::default();
+    for i in 0..num_keys {
+        if i % 2 == 0 {
+            b.insert(&i);
+        }
+    }
 
-let mut filter = Xor8::new(); // new filter.
-filter.populate_keys(&keys); // populate keys.
-filter.build(); // build bitmap.
-
-for key in 0..lookup {
-    // there can be false positives, but no false negatives.
-    filter.contains_key(key);
+    // build bitmap.
+    let filter = b.build().unwrap();
+    for key in 0..lookup {
+        // there can be false positives, but no false negatives.
+        println!("{key}: {}", filter.contains(&key));
+    }
 }
 ```
 

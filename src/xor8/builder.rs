@@ -31,7 +31,8 @@ struct KeyIndex {
 /// ```
 #[derive(Clone, Debug)]
 pub struct Xor8Builder<H = BuildHasherDefault>
-where H: BuildHasher + Clone
+where
+    H: BuildHasher + Clone,
 {
     digests: HashSet<u64>,
     pub num_digests: usize,
@@ -39,7 +40,8 @@ where H: BuildHasher + Clone
 }
 
 impl<H> Default for Xor8Builder<H>
-where H: BuildHasher + Clone + Default
+where
+    H: BuildHasher + Clone + Default,
 {
     fn default() -> Self {
         Self {
@@ -51,11 +53,14 @@ where H: BuildHasher + Clone + Default
 }
 
 impl<H> Xor8Builder<H>
-where H: BuildHasher + Clone
+where
+    H: BuildHasher + Clone,
 {
     /// New Xor8 builder initialized with [BuildHasherDefault].
     pub fn new() -> Self
-    where H: Default {
+    where
+        H: Default,
+    {
         Self::default()
     }
 
@@ -123,8 +128,9 @@ where H: BuildHasher + Clone
     /// Build bitmap for keys that where previously inserted using [Xor8Builder::insert],
     /// [Xor8Builder::populate] and [Xor8Builder::populate_digests] method.
     pub fn build(&mut self) -> Result<Xor8<H>, crate::Error> {
-        let digests = self.digests.iter().copied().collect::<Vec<u64>>();
-        self.build_from_digests(&digests)
+        let digest_len = self.digests.len();
+        let digests = self.digests.iter().copied();
+        Self::build_inner(self.hash_builder.clone(), || digests.clone(), digest_len)
     }
 
     /// Build a bitmap for pre-computed 64-bit digests for keys.
@@ -138,10 +144,26 @@ where H: BuildHasher + Clone
         &mut self,
         digests: &[u64],
     ) -> Result<Xor8<H>, crate::Error> {
-        let mut ff = Xor8::<H>::new(self.hash_builder.clone());
+        Self::build_inner(
+            self.hash_builder.clone(),
+            || digests.iter().copied(),
+            digests.len(),
+        )
+    }
 
-        ff.num_keys = Some(digests.len());
-        let (size, mut rngcounter) = (digests.len(), 1_u64);
+    fn build_inner<F, It>(
+        hash_builder: H,
+        digest_generator: F,
+        digest_len: usize,
+    ) -> Result<Xor8<H>, crate::Error>
+    where
+        F: Fn() -> It,
+        It: IntoIterator<Item = u64> + Clone,
+    {
+        let mut ff = Xor8::<H>::new(hash_builder);
+
+        ff.num_keys = Some(digest_len);
+        let (size, mut rngcounter) = (digest_len, 1_u64);
         let capacity = {
             let capacity = 32 + ((1.23 * (size as f64)).ceil() as u32);
             capacity / 3 * 3 // round it down to a multiple of 3
@@ -160,8 +182,8 @@ where H: BuildHasher + Clone
         let mut sets2: Vec<XorSet> = vec![XorSet::default(); block_length];
 
         loop {
-            for key in digests.iter() {
-                let hs = ff.get_h0h1h2(*key);
+            for key in digest_generator() {
+                let hs = ff.get_h0h1h2(key);
                 sets0[hs.h0 as usize].xor_mask ^= hs.h;
                 sets0[hs.h0 as usize].count += 1;
                 sets1[hs.h1 as usize].xor_mask ^= hs.h;
